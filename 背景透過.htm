@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>背景透過ツール</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; background-color: #f0f0f0; }
+        .container { max-width: 800px; margin: 20px auto; padding: 20px; background-color: #fff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; }
+        #controls { padding: 15px; background-color: #f9f9f9; border-radius: 5px; margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
+        input[type="file"] { display: block; width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        input[type="color"] { width: 50px; height: 30px; vertical-align: middle; cursor: pointer; }
+        input[type="text"] { width: 100px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; vertical-align: middle; }
+        #coords-display { display: inline-block; margin-left: 10px; font-style: italic; color: #777; }
+        .range-container { margin-bottom: 10px; }
+        .range-container .range-label { display: flex; justify-content: space-between; align-items: center; }
+        .range-container .range-label span { flex-grow: 1; }
+        .range-container .range-label input[type="number"] { width: 60px; text-align: right; margin-left: 10px; }
+        input[type="range"] { width: 100%; }
+        button {
+            padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; transition: background-color 0.3s;
+        }
+        button:hover { background-color: #0056b3; }
+        #process-button { width: 100%; }
+        #canvas-container { margin-top: 20px; text-align: center; }
+        #canvas-preview { max-width: 100%; height: auto; border: 1px solid #ccc; box-sizing: border-box; background-image: repeating-conic-gradient(#ccc 0% 25%, transparent 0% 50%); background-size: 20px 20px; }
+        #download-button { display: none; margin-top: 15px; background-color: #28a745; }
+        #download-button:hover { background-color: #218838; }
+        #message { margin-top: 10px; font-weight: bold; color: #d9534f; }
+        #progress-container { width: 100%; background-color: #f3f3f3; border-radius: 5px; margin-top: 10px; display: none; height: 30px; }
+        #progress-bar { background-color: #007bff; color: white; text-align: center; line-height: 30px; border-radius: 5px; transition: width 0.1s ease; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>背景透過ツール</h1>
+    <p>ライトグラフィックも影も認識　独自のデマット(dematting)技術で透過します</p>
+    <div id="controls">
+        <div class="form-group">
+            <label for="image-upload">1. 画像をアップロード (PNG, JPG)</label>
+            <input type="file" id="image-upload" accept="image/png, image/jpeg">
+        </div>
+
+        <div class="form-group">
+            <label for="color-picker">2. 透過する色の指定</label>
+            <input type="color" id="color-picker" value="#ffffff">
+            <input type="text" id="color-input" value="#ffffff">
+            <span id="coords-display">画像をクリックするとスポイト機能で色を選択できます。</span>
+        </div>
+
+        <div class="form-group">
+            <label>3. 透過の対象範囲パラメータ</label>
+
+            <div class="range-container">
+                <div class="range-label">
+                    <span>色相 (Hue)</span>
+                    <input type="number" id="hue-number" min="0" max="360" value="10">
+                </div>
+                <input type="range" id="hue-range" min="0" max="360" value="10">
+            </div>
+
+            <div class="range-container">
+                <div class="range-label">
+                    <span>彩度 (Saturation)</span>
+                    <input type="number" id="saturation-number" min="0" max="100" value="10">
+                </div>
+                <input type="range" id="saturation-range" min="0" max="100" value="10">
+            </div>
+
+            <div class="range-container">
+                <div class="range-label">
+                    <span>明度 (Lightness)</span>
+                    <input type="number" id="lightness-number" min="0" max="100" value="10">
+                </div>
+                <input type="range" id="lightness-range" min="0" max="100" value="10">
+            </div>
+            
+            <div class="range-container">
+                <div class="range-label">
+                    <span>透過強化率 (Transparency Boost)</span>
+                    <input type="number" id="transparency-boost-number" min="0" max="100" value="50" step="1">
+                </div>
+                <input type="range" id="transparency-boost-range" min="0" max="100" value="50" step="1">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <button id="process-button">4. 更新してPreviewを見る</button>
+        </div>
+    </div>
+
+    <div id="canvas-container">
+        <h2>Preview</h2>
+        <canvas id="canvas-preview"></canvas>
+        <p id="message"></p>
+        <div id="progress-container"><div id="progress-bar" style="width:0%;">0%</div></div>
+        <button id="download-button" style="display:none;">5. 透過画像をダウンロード</button>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const imageUpload = document.getElementById('image-upload');
+        const colorPicker = document.getElementById('color-picker');
+        const colorInput = document.getElementById('color-input');
+        const coordsDisplay = document.getElementById('coords-display');
+        const hueRange = document.getElementById('hue-range');
+        const saturationRange = document.getElementById('saturation-range');
+        const lightnessRange = document.getElementById('lightness-range');
+        const transparencyBoostRange = document.getElementById('transparency-boost-range');
+        const hueNumber = document.getElementById('hue-number');
+        const saturationNumber = document.getElementById('saturation-number');
+        const lightnessNumber = document.getElementById('lightness-number');
+        const transparencyBoostNumber = document.getElementById('transparency-boost-number');
+        const processButton = document.getElementById('process-button');
+        const canvas = document.getElementById('canvas-preview');
+        const downloadButton = document.getElementById('download-button');
+        const messageElement = document.getElementById('message');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        let originalImage = null;
+        let originalFileName = '';
+        let originalImageData = null;
+        let startX = -1, startY = -1;
+
+        function rgbToHsl(r, g, b) {
+            r /= 255; g /= 255; b /= 255;
+            let max = Math.max(r, g, b), min = Math.min(r, g, b);
+            let h, s, l = (max + min) / 2;
+
+            if (max === min) {
+                h = s = 0;
+            } else {
+                let d = max - min;
+                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                switch (max) {
+                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                    case g: h = (b - r) / d + 2; break;
+                    case b: h = (r - g) / d + 4; break;
+                }
+                h /= 6;
+            }
+            return { h: h * 360, s: s * 100, l: l * 100 };
+        }
+
+        function rgbToHex(r, g, b) {
+            return '#' + [r, g, b].map(x => {
+                const hex = x.toString(16);
+                return hex.length === 1 ? '0' + hex : hex;
+            }).join('');
+        }
+
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? [
+                parseInt(result[1], 16),
+                parseInt(result[2], 16),
+                parseInt(result[3], 16)
+            ] : null;
+        }
+
+        function hslDiff(hsl1, hsl2) {
+            const hueDiff = Math.abs(hsl1.h - hsl2.h);
+            const finalHueDiff = Math.min(hueDiff, 360 - hueDiff);
+            const satDiff = Math.abs(hsl1.s - hsl2.s);
+            const lightDiff = Math.abs(hsl1.l - hsl2.l);
+            return { h: finalHueDiff, s: satDiff, l: lightDiff };
+        }
+        
+        imageUpload.addEventListener('change', (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    originalImage = img;
+                    originalFileName = file.name.split('.').slice(0, -1).join('.');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    
+                    const tempCanvas = document.createElement('canvas');
+                    const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+                    tempCanvas.width = img.width;
+                    tempCanvas.height = img.height;
+                    tempCtx.drawImage(img, 0, 0);
+                    originalImageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+                    
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0);
+
+                    downloadButton.style.display = 'none';
+                    messageElement.textContent = '画像をアップロードしました。色を指定して「更新してプレビューを見る」を押してください。';
+                    progressContainer.style.display = 'none';
+                    startX = -1;
+                    startY = -1;
+                };
+                img.onerror = () => {
+                    messageElement.textContent = 'エラー: 画像を読み込めませんでした。';
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        canvas.addEventListener('click', (e) => {
+            if (!originalImageData) {
+                messageElement.textContent = '先に画像をアップロードしてください。';
+                return;
+            }
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = originalImageData.width / rect.width;
+            const scaleY = originalImageData.height / rect.height;
+            startX = Math.floor((e.clientX - rect.left) * scaleX);
+            startY = Math.floor((e.clientY - rect.top) * scaleY);
+
+            const i = (startY * originalImageData.width + startX) * 4;
+            const r = originalImageData.data[i];
+            const g = originalImageData.data[i + 1];
+            const b = originalImageData.data[i + 2];
+            const hex = rgbToHex(r, g, b);
+            
+            colorPicker.value = hex;
+            colorInput.value = hex;
+            coordsDisplay.textContent = `選択された色: ${hex} (${startX}, ${startY})`;
+        });
+
+        const syncParams = (range, number) => {
+            if (number.value === '' || isNaN(number.value)) {
+                number.value = range.min;
+            } else if (parseFloat(number.value) > parseFloat(number.max)) {
+                number.value = number.max;
+            } else if (parseFloat(number.value) < parseFloat(number.min)) {
+                number.value = number.min;
+            }
+            range.value = number.value;
+        };
+
+        const setupInputHandlers = (range, number) => {
+            number.addEventListener('change', () => {
+                syncParams(range, number);
+            });
+            number.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    number.stepUp();
+                    syncParams(range, number);
+                }
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    number.stepDown();
+                    syncParams(range, number);
+                }
+            });
+            range.addEventListener('input', () => {
+                number.value = range.value;
+            });
+        };
+        
+        setupInputHandlers(hueRange, hueNumber);
+        setupInputHandlers(saturationRange, saturationNumber);
+        setupInputHandlers(lightnessRange, lightnessNumber);
+        setupInputHandlers(transparencyBoostRange, transparencyBoostNumber);
+        
+        colorPicker.addEventListener('input', () => { colorInput.value = colorPicker.value; });
+        colorInput.addEventListener('change', () => { colorPicker.value = colorInput.value; });
+
+        processButton.addEventListener('click', () => {
+            if (!originalImageData) {
+                messageElement.textContent = '先に画像をアップロードしてください。';
+                return;
+            }
+
+            processButton.disabled = true;
+            processButton.textContent = '処理中...';
+            messageElement.textContent = '透過処理中です。しばらくお待ちください。';
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressBar.textContent = '0%';
+            
+            const imageData = new ImageData(new Uint8ClampedArray(originalImageData.data), originalImageData.width, originalImageData.height);
+            const data = imageData.data;
+            const totalPixels = imageData.width * imageData.height;
+            
+            const targetRgb = hexToRgb(colorInput.value);
+            const targetHsl = rgbToHsl(targetRgb[0], targetRgb[1], targetRgb[2]);
+
+            const hueThreshold = parseInt(hueNumber.value);
+            const satThreshold = parseInt(saturationNumber.value);
+            const lightnessThreshold = parseInt(lightnessNumber.value);
+            const transparencyBoost = parseInt(transparencyBoostNumber.value);
+
+            let processedCount = 0;
+            const batchSize = 10000;
+
+            const processLoop = () => {
+                const start = processedCount;
+                const end = Math.min(start + batchSize, totalPixels);
+                
+                for (let i = start; i < end; i++) {
+                    const dataIndex = i * 4;
+                    const r_orig = originalImageData.data[dataIndex];
+                    const g_orig = originalImageData.data[dataIndex + 1];
+                    const b_orig = originalImageData.data[dataIndex + 2];
+                    
+                    const pixelHsl = rgbToHsl(r_orig, g_orig, b_orig);
+                    const diff = hslDiff(pixelHsl, targetHsl);
+
+                    if (diff.h <= hueThreshold && diff.s <= satThreshold && diff.l <= lightnessThreshold) {
+                        const normalizedHueDiff = hueThreshold === 0 ? 0 : diff.h / hueThreshold;
+                        const normalizedSatDiff = satThreshold === 0 ? 0 : diff.s / satThreshold;
+                        const normalizedLightDiff = lightnessThreshold === 0 ? 0 : diff.l / lightnessThreshold;
+                        
+                        let alpha = Math.max(normalizedHueDiff, normalizedSatDiff, normalizedLightDiff);
+                        
+                        // 新しい透過強化率の計算式
+                        let newAlpha;
+                        if (transparencyBoost === 0) {
+                            newAlpha = 1;
+                        } else if (transparencyBoost === 100) {
+                            newAlpha = 0;
+                        } else if (transparencyBoost === 50) {
+                            newAlpha = alpha;
+                        } else if (transparencyBoost > 50) {
+                            const boostFactor = (100 - transparencyBoost) / 50;
+                            newAlpha = alpha * boostFactor;
+                        } else { // transparencyBoost < 50
+                            const boostFactor = (50 - transparencyBoost) / 50;
+                            newAlpha = alpha + (1 - alpha) * boostFactor;
+                        }
+                        
+                        // alphaの範囲を0-1にクランプ
+                        const safeAlpha = Math.max(0, Math.min(1, newAlpha));
+                        
+                        // 透過後のRGB値を計算
+                        const finalAlpha = Math.max(0.001, safeAlpha); // ゼロ除算回避
+                        const r_final = (r_orig - targetRgb[0] * (1 - finalAlpha)) / finalAlpha;
+                        const g_final = (g_orig - targetRgb[1] * (1 - finalAlpha)) / finalAlpha;
+                        const b_final = (b_orig - targetRgb[2] * (1 - finalAlpha)) / finalAlpha;
+                        
+                        data[dataIndex] = Math.round(Math.max(0, Math.min(255, r_final)));
+                        data[dataIndex + 1] = Math.round(Math.max(0, Math.min(255, g_final)));
+                        data[dataIndex + 2] = Math.round(Math.max(0, Math.min(255, b_final)));
+                        data[dataIndex + 3] = Math.round(255 * finalAlpha);
+                    }
+                }
+                
+                processedCount = end;
+                const progress = Math.round((processedCount / totalPixels) * 100);
+                progressBar.style.width = progress + '%';
+                progressBar.textContent = progress + '%';
+
+                if (processedCount < totalPixels) {
+                    setTimeout(processLoop, 0);
+                } else {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.putImageData(imageData, 0, 0);
+                    
+                    messageElement.textContent = '透過が完了しました。下の「ダウンロード」ボタンから保存してください。';
+                    downloadButton.style.display = 'inline-block';
+                    
+                    processButton.disabled = false;
+                    processButton.textContent = '4. 更新してプレビューを見る';
+                    progressContainer.style.display = 'none';
+                }
+            };
+            
+            processLoop();
+        });
+
+        downloadButton.addEventListener('click', () => {
+            try {
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `${originalFileName}_transparent.png`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    } else {
+                        messageElement.textContent = 'エラー: Blobの生成に失敗しました。';
+                    }
+                }, 'image/png');
+            } catch (e) {
+                messageElement.textContent = 'エラー: ダウンロード処理中に問題が発生しました。';
+                console.error(e);
+            }
+        });
+    });
+</script>
+</body>
+</html>
