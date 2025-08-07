@@ -1,2 +1,5 @@
-# Background-Separation-Hsl
-A prototype for a new background separation technology, using a unique dematting approach based on the HSL color space. Unlike traditional methods, it naturally handles semi-transparent areas and fine details without artifacts. This project is open for all to help improve.
+# Background-Separation-HslA Prototype for a New Background Separation Technology
+This is a tool for separating backgrounds using a unique dematting technology that differs from traditional chroma keying and AI-based methods. At its core, it uses a gradient-based transparency calculated in the HSL color space and a color correction formula to compensate for background color bleed. This approach achieves a natural separation without leaving artifacts like halos, shadows, or fine-line distortions, which are common issues.
+This tool is currently a prototype and a foundation for a new background separation technology. I am a beginner in programming, and I would love for all of you to help improve this technology and turn it into an even better tool.
+To the best of my knowledge, this specific method did not exist in any tools I found. However, there is a possibility that a similar technique might already exist somewhere.
+This project is licensed under the GNU GPL v3, and all derived works must also adopt this philosophy.
